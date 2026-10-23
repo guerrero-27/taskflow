@@ -27,14 +27,9 @@ class DashboardController extends Controller
                     'medium' => $user->tasks()->where('priority', TaskPriority::Medium->value)->count(),
                     'high' => $user->tasks()->where('priority', TaskPriority::High->value)->count(),
                 ],
-                'overdue' => $user->tasks()
-                    ->where('due_date', '<', today())
-                    ->where('status', '!=', TaskStatus::Done->value)
-                    ->count(),
-                'due_this_week' => $user->tasks()
-                    ->whereBetween('due_date', [today(), today()->endOfWeek()])
-                    ->where('status', '!=', TaskStatus::Done->value)
-                    ->count(),
+                'overdue' => $user->tasks()->overdue()->count(),
+                // Active work only: completed tasks don't count toward "due this week".
+                'due_this_week' => $user->tasks()->dueThisWeek()->incomplete()->count(),
             ],
             'recent_tasks' => $user->tasks()
                 ->with('category:id,name,color')

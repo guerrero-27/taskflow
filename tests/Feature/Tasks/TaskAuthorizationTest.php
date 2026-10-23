@@ -5,16 +5,6 @@ use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\User;
 
-test('user cannot view another user\'s task edit page', function () {
-    $owner = User::factory()->create();
-    $attacker = User::factory()->create();
-    $task = Task::factory()->create(['user_id' => $owner->id]);
-
-    $this->actingAs($attacker)
-        ->get(route('tasks.edit', $task))
-        ->assertForbidden();
-});
-
 test('user cannot update another user\'s task', function () {
     $owner = User::factory()->create();
     $attacker = User::factory()->create();

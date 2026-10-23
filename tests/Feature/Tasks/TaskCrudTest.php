@@ -9,10 +9,6 @@ test('guests are redirected from task index', function () {
     $this->get(route('tasks.index'))->assertRedirect(route('login'));
 });
 
-test('guests are redirected from task create', function () {
-    $this->get(route('tasks.create'))->assertRedirect(route('login'));
-});
-
 test('guests cannot store tasks', function () {
     $this->post(route('tasks.store'), [])->assertRedirect(route('login'));
 });
@@ -20,12 +16,6 @@ test('guests cannot store tasks', function () {
 test('authenticated user can view task index', function () {
     $this->actingAs(User::factory()->create())
         ->get(route('tasks.index'))
-        ->assertOk();
-});
-
-test('authenticated user can view task create page', function () {
-    $this->actingAs(User::factory()->create())
-        ->get(route('tasks.create'))
         ->assertOk();
 });
 
@@ -66,15 +56,6 @@ test('user_id is never taken from request input', function () {
         'user_id' => $owner->id,
         'title' => 'Injected task',
     ]);
-});
-
-test('user can view their own task edit page', function () {
-    $user = User::factory()->create();
-    $task = Task::factory()->create(['user_id' => $user->id]);
-
-    $this->actingAs($user)
-        ->get(route('tasks.edit', $task))
-        ->assertOk();
 });
 
 test('user can update their task', function () {

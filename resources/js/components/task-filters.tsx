@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { SearchIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -12,14 +12,15 @@ import {
 import { index } from '@/routes/tasks';
 import type { Category } from '@/types';
 
+// The server sends every key, with null for filters that are unset or invalid.
 export type TaskFilters = {
-    search?: string;
-    status?: string;
-    priority?: string;
-    category_id?: string;
-    due?: string;
-    sort?: string;
-    direction?: string;
+    search?: string | null;
+    status?: string | null;
+    priority?: string | null;
+    category_id?: string | null;
+    due?: string | null;
+    sort?: string | null;
+    direction?: string | null;
 };
 
 type Props = {
@@ -28,39 +29,69 @@ type Props = {
 };
 
 export function TaskFilters({ filters, categories }: Props) {
+    const [search, setSearch] = useState(filters.search ?? '');
     const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Latest requested filters, so a debounced search never builds on stale props.
+    const latestFilters = useRef<TaskFilters>(filters);
 
-    const navigate = useCallback(
-        (patch: Partial<TaskFilters>) => {
-            const next: Record<string, string> = {};
-            const merged = { ...filters, ...patch, page: '1' };
-            for (const [k, v] of Object.entries(merged)) {
-                if (v) next[k] = v;
-            }
-            router.get(index.url(), next, { preserveState: true, replace: true });
-        },
-        [filters],
-    );
+    useEffect(() => {
+        latestFilters.current = filters;
+
+        // Don't overwrite text the user is still typing; the pending search will sync it.
+        if (searchTimer.current) return;
+        const serverSearch = filters.search ?? '';
+        setSearch((current) => (current.trim() === serverSearch ? current : serverSearch));
+    }, [filters]);
+
+    useEffect(() => cancelPendingSearch, []);
+
+    function cancelPendingSearch() {
+        if (searchTimer.current) clearTimeout(searchTimer.current);
+        searchTimer.current = null;
+    }
+
+    function navigate(patch: Partial<TaskFilters>) {
+        cancelPendingSearch();
+        const merged: TaskFilters = { ...latestFilters.current, ...patch };
+        latestFilters.current = merged;
+
+        const next: Record<string, string> = {};
+        for (const [k, v] of Object.entries({ ...merged, page: '1' })) {
+            if (v) next[k] = v;
+        }
+        router.get(index.url(), next, { preserveState: true, replace: true });
+    }
 
     function handleSearch(value: string) {
-        if (searchTimer.current) clearTimeout(searchTimer.current);
-        searchTimer.current = setTimeout(() => navigate({ search: value }), 350);
+        setSearch(value);
+        cancelPendingSearch();
+        searchTimer.current = setTimeout(() => navigate({ search: value.trim() }), 350);
     }
 
     function handleSelect(key: keyof TaskFilters, value: string) {
-        navigate({ [key]: value === '__all__' ? '' : value });
+        // Include any in-progress search text so it isn't lost or applied later.
+        navigate({ search: search.trim(), [key]: value === '__all__' ? '' : value });
     }
 
-    const activeCount = [filters.status, filters.priority, filters.category_id, filters.due].filter(
-        Boolean,
-    ).length;
+    function clearFilters() {
+        setSearch('');
+        navigate({ search: '', status: '', priority: '', category_id: '', due: '' });
+    }
+
+    const activeCount = [
+        filters.search,
+        filters.status,
+        filters.priority,
+        filters.category_id,
+        filters.due,
+    ].filter(Boolean).length;
 
     return (
         <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[180px] flex-1">
                 <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                    defaultValue={filters.search ?? ''}
+                    value={search}
                     onChange={(e) => handleSearch(e.target.value)}
                     placeholder="Search tasks…"
                     className="pl-8"
@@ -139,9 +170,7 @@ export function TaskFilters({ filters, categories }: Props) {
                 {activeCount > 0 && (
                     <button
                         type="button"
-                        onClick={() =>
-                            navigate({ status: '', priority: '', category_id: '', due: '' })
-                        }
+                        onClick={clearFilters}
                         className="text-sm text-muted-foreground underline-offset-4 hover:underline"
                     >
                         Clear filters ({activeCount})

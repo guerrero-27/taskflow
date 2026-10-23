@@ -9,7 +9,8 @@ Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::resource('tasks', TaskController::class)->except(['show']);
+    // Tasks are created and edited in modals on the index page; there are no create/edit pages.
+    Route::resource('tasks', TaskController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('categories', CategoryController::class)->except(['show', 'create', 'edit']);
 });
 

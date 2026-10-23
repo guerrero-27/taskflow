@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TaskStatus;
 use App\Http\Requests\Tasks\StoreTaskRequest;
 use App\Http\Requests\Tasks\UpdateTaskRequest;
 use App\Models\Task;
+use App\Support\TaskListFilters;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -13,48 +13,27 @@ use Inertia\Response;
 
 class TaskController extends Controller
 {
-    private const SORTABLE = ['created_at', 'updated_at', 'due_date', 'title', 'priority', 'status'];
-
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
-        $sort = in_array($request->sort, self::SORTABLE) ? $request->sort : 'created_at';
-        $direction = $request->direction === 'asc' ? 'asc' : 'desc';
+        $filters = TaskListFilters::fromInput($request->query());
 
         $tasks = $request->user()
             ->tasks()
             ->with('category:id,name,color')
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $term = '%'.$request->search.'%';
-                $q->where(fn ($q) => $q
-                    ->where('title', 'like', $term)
-                    ->orWhere('description', 'like', $term)
-                );
-            })
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('priority'), fn ($q) => $q->where('priority', $request->priority))
-            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', (int) $request->category_id))
-            ->when($request->filled('due'), fn ($q) => match ($request->due) {
-                'overdue' => $q->where('due_date', '<', today())->where('status', '!=', TaskStatus::Done->value),
-                'today' => $q->whereDate('due_date', today()),
-                'this_week' => $q->whereBetween('due_date', [today(), today()->endOfWeek()]),
-                'no_due' => $q->whereNull('due_date'),
-                default => $q,
-            })
-            ->orderBy($sort, $direction)
+            ->filter($filters)
             ->paginate(15)
-            ->withQueryString();
+            ->appends($filters->withPage(null)->toQuery());
+
+        // A page beyond the end (e.g. after deleting the last task on the last page)
+        // falls back to the last page that still has results.
+        if ($tasks->currentPage() > $tasks->lastPage()) {
+            return to_route('tasks.index', $filters->withPage($tasks->lastPage())->toQuery());
+        }
 
         return Inertia::render('tasks/index', [
             'tasks' => $tasks,
             'categories' => $request->user()->categories()->orderBy('name')->get(['id', 'name', 'color']),
-            'filters' => $request->only(['search', 'status', 'priority', 'category_id', 'due', 'sort', 'direction']),
-        ]);
-    }
-
-    public function create(Request $request): Response
-    {
-        return Inertia::render('tasks/create', [
-            'categories' => $request->user()->categories()->orderBy('name')->get(['id', 'name', 'color']),
+            'filters' => $filters->toProps(),
         ]);
     }
 
@@ -64,28 +43,16 @@ class TaskController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Task created.')]);
 
-        return to_route('tasks.index');
-    }
-
-    public function edit(Request $request, Task $task): Response
-    {
-        $this->authorize('update', $task);
-
-        return Inertia::render('tasks/edit', [
-            'task' => $task->load('category:id,name,color'),
-            'categories' => $request->user()->categories()->orderBy('name')->get(['id', 'name', 'color']),
-        ]);
+        return $this->redirectToList($request, keepPage: false);
     }
 
     public function update(UpdateTaskRequest $request, Task $task): RedirectResponse
     {
-        $this->authorize('update', $task);
-
         $task->update($request->validated());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Task updated.')]);
 
-        return to_route('tasks.index');
+        return $this->redirectToList($request);
     }
 
     public function destroy(Request $request, Task $task): RedirectResponse
@@ -96,6 +63,30 @@ class TaskController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Task deleted.')]);
 
-        return to_route('tasks.index');
+        return $this->redirectToList($request);
+    }
+
+    /**
+     * Redirect back to the Tasks list the mutation was made from, keeping its filters.
+     *
+     * Only the query string of a same-origin Tasks index referer is used; the redirect
+     * target is always the tasks.index route, never the referer URL itself.
+     */
+    private function redirectToList(Request $request, bool $keepPage = true): RedirectResponse
+    {
+        $query = [];
+        $referer = (string) $request->headers->get('referer');
+
+        if (strtok($referer, '?#') === route('tasks.index')) {
+            parse_str((string) parse_url($referer, PHP_URL_QUERY), $query);
+        }
+
+        $filters = TaskListFilters::fromInput($query);
+
+        if (! $keepPage) {
+            $filters = $filters->withPage(null);
+        }
+
+        return to_route('tasks.index', $filters->toQuery());
     }
 }
