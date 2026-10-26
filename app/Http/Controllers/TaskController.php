@@ -43,6 +43,11 @@ class TaskController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Task created.')]);
 
+        // Tasks added from the dashboard return there so its statistics refresh in place.
+        if ($this->cameFrom($request, 'dashboard')) {
+            return to_route('dashboard');
+        }
+
         return $this->redirectToList($request, keepPage: false);
     }
 
@@ -75,10 +80,9 @@ class TaskController extends Controller
     private function redirectToList(Request $request, bool $keepPage = true): RedirectResponse
     {
         $query = [];
-        $referer = (string) $request->headers->get('referer');
 
-        if (strtok($referer, '?#') === route('tasks.index')) {
-            parse_str((string) parse_url($referer, PHP_URL_QUERY), $query);
+        if ($this->cameFrom($request, 'tasks.index')) {
+            parse_str((string) parse_url((string) $request->headers->get('referer'), PHP_URL_QUERY), $query);
         }
 
         $filters = TaskListFilters::fromInput($query);
@@ -88,5 +92,15 @@ class TaskController extends Controller
         }
 
         return to_route('tasks.index', $filters->toQuery());
+    }
+
+    /**
+     * Whether the request was made from the given named route's page (same origin,
+     * ignoring query string and fragment). Only used to pick between internal
+     * redirect targets; the referer URL itself is never redirected to.
+     */
+    private function cameFrom(Request $request, string $routeName): bool
+    {
+        return strtok((string) $request->headers->get('referer'), '?#') === route($routeName);
     }
 }

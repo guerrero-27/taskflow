@@ -124,3 +124,45 @@ test('date scopes use the configured application timezone', function () {
         ->and($wednesday->fresh()->is_overdue)->toBeTrue()
         ->and(dueDatesOf(Task::dueToday()))->toBe(['2026-10-22']);
 });
+
+test('due soon covers today and the following six days, incomplete only', function () {
+    taskDue($this->user, '2026-10-20');                       // overdue: excluded
+    taskDue($this->user, '2026-10-21');                       // today: day 1
+    taskDue($this->user, '2026-10-24', TaskStatus::InProgress);
+    taskDue($this->user, '2026-10-24', TaskStatus::Done);     // done: excluded
+    taskDue($this->user, '2026-10-27');                       // day 7: included
+    taskDue($this->user, '2026-10-28');                       // day 8: excluded
+    taskDue($this->user, null);
+
+    expect(dueDatesOf(Task::dueSoon()))->toBe(['2026-10-21', '2026-10-24', '2026-10-27']);
+});
+
+test('due soon window spans week and month boundaries', function () {
+    $this->travelTo(Carbon::parse('2026-10-29 08:00:00')); // Thursday
+    taskDue($this->user, '2026-10-29');
+    taskDue($this->user, '2026-11-01'); // Sunday
+    taskDue($this->user, '2026-11-04'); // day 7
+    taskDue($this->user, '2026-11-05'); // day 8
+
+    expect(dueDatesOf(Task::dueSoon()))->toBe(['2026-10-29', '2026-11-01', '2026-11-04']);
+});
+
+test('due soon accepts a custom window length', function () {
+    taskDue($this->user, '2026-10-21');
+    taskDue($this->user, '2026-10-22');
+
+    expect(dueDatesOf(Task::dueSoon(1)))->toBe(['2026-10-21'])
+        ->and(dueDatesOf(Task::dueSoon(0)))->toBe(['2026-10-21']);
+});
+
+test('due soon uses the configured application timezone', function () {
+    // 17:00 UTC on Wednesday is already Thursday in Manila, so Wednesday is overdue there.
+    config(['app.timezone' => 'Asia/Manila']);
+    $this->travelTo(Carbon::parse('2026-10-21 17:00:00', 'UTC'));
+    taskDue($this->user, '2026-10-21');
+    taskDue($this->user, '2026-10-28');
+    taskDue($this->user, '2026-10-29');
+
+    expect(dueDatesOf(Task::dueSoon()))->toBe(['2026-10-28'])
+        ->and(Task::overdue()->count())->toBe(1);
+});

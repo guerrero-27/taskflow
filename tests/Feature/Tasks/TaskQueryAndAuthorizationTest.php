@@ -180,18 +180,20 @@ test('dashboard counts use the shared scopes and exclude completed tasks', funct
     $make = fn (string $date, TaskStatus $status) => Task::factory()
         ->create(['user_id' => $user->id, 'due_date' => $date, 'status' => $status]);
 
+    // Rolling 7-day window: 2026-10-21 through 2026-10-27.
     $make('2026-10-20', TaskStatus::Todo);        // overdue
     $make('2026-10-20', TaskStatus::Done);        // done, not overdue
-    $make('2026-10-21', TaskStatus::Todo);        // due today: this week, not overdue
-    $make('2026-10-25', TaskStatus::InProgress);  // this week
-    $make('2026-10-23', TaskStatus::Done);        // this week but done
-    $make('2026-10-26', TaskStatus::Todo);        // next week
+    $make('2026-10-21', TaskStatus::Todo);        // due today: due soon, not overdue
+    $make('2026-10-25', TaskStatus::InProgress);  // due soon
+    $make('2026-10-23', TaskStatus::Done);        // in window but done
+    $make('2026-10-27', TaskStatus::Todo);        // last day of the window
+    $make('2026-10-28', TaskStatus::Todo);        // outside the window
 
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertInertia(fn ($page) => $page
             ->where('stats.overdue', 1)
-            ->where('stats.due_this_week', 2)
+            ->where('stats.due_soon', 3)
         );
 });
 

@@ -126,6 +126,23 @@ class Task extends Model
     }
 
     /**
+     * Incomplete tasks due within a rolling window of $days days that starts today.
+     *
+     * Today counts as day one, so the default covers today plus the following six
+     * days. Overdue tasks are never included because the window starts today.
+     *
+     * @param  Builder<Task>  $query
+     */
+    public function scopeDueSoon(Builder $query, int $days = 7): void
+    {
+        $today = static::currentDate();
+
+        $query->incomplete()
+            ->where('due_date', '>=', $today->toDateString())
+            ->where('due_date', '<=', $today->addDays(max($days, 1) - 1)->toDateString());
+    }
+
+    /**
      * Apply validated Tasks list filters and a deterministic sort order.
      *
      * @param  Builder<Task>  $query

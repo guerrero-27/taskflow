@@ -30,7 +30,7 @@ export default function CategoriesIndex({ categories }: PageProps) {
     }
 
     function handleDelete() {
-        if (!deleteTarget) return;
+        if (!deleteTarget || deleting) return;
         setDeleting(true);
         router.delete(destroy.url(deleteTarget), {
             onFinish: () => {
@@ -48,6 +48,7 @@ export default function CategoriesIndex({ categories }: PageProps) {
                 <div className="flex items-start justify-between gap-4">
                     <Heading
                         variant="small"
+                        id="categories-heading"
                         title="Categories"
                         description="Organize your tasks with categories"
                     />
@@ -80,6 +81,7 @@ export default function CategoriesIndex({ categories }: PageProps) {
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
                 category={editTarget}
+                fallbackFocus={focusCategoriesHeading}
             />
 
             <ConfirmDeleteDialog
@@ -95,9 +97,15 @@ export default function CategoriesIndex({ categories }: PageProps) {
                 }
                 onConfirm={handleDelete}
                 processing={deleting}
+                fallbackFocus={focusCategoriesHeading}
             />
         </>
     );
+}
+
+// Where focus lands when a dialog's opener is gone, e.g. after deleting its card.
+function focusCategoriesHeading() {
+    return document.getElementById('categories-heading');
 }
 
 function CategoryCard({
@@ -118,9 +126,12 @@ function CategoryCard({
             />
             <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{category.name}</p>
-                <p className="text-sm text-muted-foreground">
-                    {category.tasks_count === 1 ? '1 task' : `${category.tasks_count} tasks`}
-                </p>
+                {/* tasks_count is only present when loaded with withCount; omit it otherwise. */}
+                {typeof category.tasks_count === 'number' && (
+                    <p className="text-sm text-muted-foreground">
+                        {category.tasks_count === 1 ? '1 task' : `${category.tasks_count} tasks`}
+                    </p>
+                )}
             </div>
             <div className="flex gap-1 pointer-fine:opacity-0 pointer-fine:transition-opacity pointer-fine:group-hover:opacity-100 pointer-fine:focus-within:opacity-100">
                 <Button

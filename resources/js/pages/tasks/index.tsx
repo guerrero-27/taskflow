@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Head, router } from '@inertiajs/react';
-import { CalendarIcon, ClipboardListIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import { ClipboardListIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import Heading from '@/components/heading';
 import { PriorityBadge } from '@/components/priority-badge';
 import { StatusBadge } from '@/components/status-badge';
 import { TaskDialog } from '@/components/task-dialog';
+import { TaskDueDate } from '@/components/task-due-date';
 import { TaskFilters, type TaskFilters as TFilters } from '@/components/task-filters';
 import { Button } from '@/components/ui/button';
 import { index as tasksIndex, destroy } from '@/routes/tasks';
@@ -34,7 +35,7 @@ export default function TasksIndex({ tasks, categories, filters }: PageProps) {
     }
 
     function handleDelete() {
-        if (!deleteTarget) return;
+        if (!deleteTarget || deleting) return;
         setDeleting(true);
         router.delete(destroy.url(deleteTarget), {
             onFinish: () => {
@@ -52,6 +53,7 @@ export default function TasksIndex({ tasks, categories, filters }: PageProps) {
                 <div className="flex items-start justify-between gap-4">
                     <Heading
                         variant="small"
+                        id="tasks-heading"
                         title="Tasks"
                         description="Manage and track your tasks"
                     />
@@ -91,6 +93,7 @@ export default function TasksIndex({ tasks, categories, filters }: PageProps) {
                 onOpenChange={setDialogOpen}
                 task={editTarget}
                 categories={categories}
+                fallbackFocus={focusTasksHeading}
             />
 
             <ConfirmDeleteDialog
@@ -106,9 +109,15 @@ export default function TasksIndex({ tasks, categories, filters }: PageProps) {
                 }
                 onConfirm={handleDelete}
                 processing={deleting}
+                fallbackFocus={focusTasksHeading}
             />
         </>
     );
+}
+
+// Where focus lands when a dialog's opener is gone, e.g. after deleting its row.
+function focusTasksHeading() {
+    return document.getElementById('tasks-heading');
 }
 
 function hasActiveFilters(filters: TFilters) {
@@ -124,13 +133,7 @@ function TaskRow({
     onEdit: (t: Task) => void;
     onDelete: (t: Task) => void;
 }) {
-    const dueDateLabel = task.due_date
-        ? new Date(task.due_date + 'T00:00:00').toLocaleDateString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-          })
-        : null;
+    const titleClass = task.status === 'done' ? 'text-muted-foreground line-through' : '';
 
     const actions = (
         <div className="flex shrink-0 gap-1 pointer-fine:opacity-0 pointer-fine:transition-opacity pointer-fine:group-hover:opacity-100 pointer-fine:focus-within:opacity-100">
@@ -159,65 +162,67 @@ function TaskRow({
             {/* Mobile layout */}
             <div className="sm:hidden">
                 <div className="flex items-start justify-between gap-2">
-                    <p className={`flex-1 font-medium leading-snug ${task.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
-                        {task.title}
-                    </p>
+                    <p className={`flex-1 font-medium leading-snug ${titleClass}`}>{task.title}</p>
                     {actions}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <StatusBadge status={task.status} />
-                    <PriorityBadge priority={task.priority} />
-                    {task.category && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <span
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: task.category.color ?? '#e5e7eb' }}
-                            />
-                            {task.category.name}
-                        </span>
-                    )}
-                    {dueDateLabel && (
-                        <span
-                            className={`inline-flex items-center gap-1 text-xs ${task.is_overdue ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
-                        >
-                            <CalendarIcon className="size-3" />
-                            {dueDateLabel}
-                        </span>
-                    )}
+                    <TaskMeta task={task} />
                 </div>
             </div>
 
             {/* Desktop layout */}
             <div className="hidden sm:flex sm:items-center sm:gap-3">
-                <p className={`flex-1 truncate font-medium ${task.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
-                    {task.title}
-                </p>
+                <p className={`flex-1 truncate font-medium ${titleClass}`}>{task.title}</p>
                 <div className="flex shrink-0 items-center gap-2">
-                    <StatusBadge status={task.status} />
-                    <PriorityBadge priority={task.priority} />
-                    {task.category && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <span
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: task.category.color ?? '#e5e7eb' }}
-                            />
-                            {task.category.name}
-                        </span>
-                    )}
-                    {dueDateLabel && (
-                        <span
-                            className={`inline-flex items-center gap-1 text-xs ${task.is_overdue ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
-                        >
-                            <CalendarIcon className="size-3" />
-                            {dueDateLabel}
-                        </span>
-                    )}
+                    <TaskMeta task={task} />
                     {actions}
                 </div>
             </div>
         </div>
     );
 }
+
+function TaskMeta({ task }: { task: Task }) {
+    return (
+        <>
+            <StatusBadge status={task.status} />
+            <PriorityBadge priority={task.priority} />
+            {task.category && (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: task.category.color ?? '#e5e7eb' }}
+                        aria-hidden="true"
+                    />
+                    {task.category.name}
+                </span>
+            )}
+            {task.due_date && <TaskDueDate date={task.due_date} overdue={task.is_overdue} />}
+        </>
+    );
+}
+
+type PageItem = number | 'gap';
+
+/** First, last, and the pages around the current one, with gaps for skipped ranges. */
+function pageItems(current: number, last: number): PageItem[] {
+    const pages = [...new Set([1, current - 1, current, current + 1, last])]
+        .filter((page) => page >= 1 && page <= last)
+        .sort((a, b) => a - b);
+
+    const items: PageItem[] = [];
+    pages.forEach((page, i) => {
+        const previous = pages[i - 1];
+        if (previous !== undefined && page - previous === 2) items.push(previous + 1);
+        else if (previous !== undefined && page - previous > 2) items.push('gap');
+        items.push(page);
+    });
+
+    return items;
+}
+
+// Comfortable touch targets on phones, compact from sm up.
+const PAGE_BUTTON = 'h-10 min-w-10 sm:h-8 sm:min-w-8';
 
 function Pagination({
     paginator,
@@ -228,56 +233,95 @@ function Pagination({
 }) {
     if (paginator.last_page <= 1) return null;
 
-    function goTo(page: number) {
-        const params: Record<string, string> = { page: String(page) };
-        for (const [k, v] of Object.entries(filters)) {
-            if (v) params[k] = v;
-        }
-        router.get(tasksIndex.url(), params, { preserveState: true, replace: false });
-    }
+    const { current_page: current, last_page: last } = paginator;
 
-    const pages = paginator.links
-        .filter((l) => !['&laquo; Previous', 'Next &raquo;'].includes(l.label))
-        .map((l) => ({ ...l, page: parseInt(l.label, 10) }))
-        .filter((l) => !isNaN(l.page));
+    // Keep the active filters on every page link.
+    const query: Record<string, string> = {};
+    for (const [key, value] of Object.entries(filters)) {
+        if (value) query[key] = value;
+    }
+    const pageUrl = (page: number) =>
+        tasksIndex.url({ query: page > 1 ? { ...query, page: String(page) } : query });
 
     return (
-        <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-            <span>
-                {paginator.from}–{paginator.to} of {paginator.total}
-            </span>
-            <div className="flex items-center gap-1">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={paginator.current_page === 1}
-                    onClick={() => goTo(paginator.current_page - 1)}
-                >
-                    Previous
-                </Button>
+        <nav
+            aria-label="Tasks pagination"
+            className="flex flex-col items-center gap-3 text-sm text-muted-foreground sm:flex-row sm:justify-between"
+        >
+            <p>
+                Showing {paginator.from}–{paginator.to} of {paginator.total} tasks
+            </p>
+            <ul className="flex flex-wrap items-center justify-center gap-1">
+                <li>
+                    <PageLink href={current > 1 ? pageUrl(current - 1) : null} label="Previous page">
+                        Previous
+                    </PageLink>
+                </li>
 
-                {pages.map(({ page, active }) => (
-                    <Button
-                        key={page}
-                        variant={active ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => goTo(page)}
-                        className={active ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}
-                    >
-                        {page}
-                    </Button>
-                ))}
+                {pageItems(current, last).map((item, i) =>
+                    item === 'gap' ? (
+                        <li key={`gap-${i}`} aria-hidden="true" className="px-1">
+                            …
+                        </li>
+                    ) : (
+                        <li key={item}>
+                            <PageLink
+                                href={pageUrl(item)}
+                                label={`Page ${item}`}
+                                current={item === current}
+                            >
+                                {item}
+                            </PageLink>
+                        </li>
+                    ),
+                )}
 
-                <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={paginator.current_page === paginator.last_page}
-                    onClick={() => goTo(paginator.current_page + 1)}
-                >
-                    Next
-                </Button>
-            </div>
-        </div>
+                <li>
+                    <PageLink href={current < last ? pageUrl(current + 1) : null} label="Next page">
+                        Next
+                    </PageLink>
+                </li>
+            </ul>
+        </nav>
+    );
+}
+
+function PageLink({
+    href,
+    label,
+    current = false,
+    children,
+}: {
+    href: string | null;
+    label: string;
+    current?: boolean;
+    children: React.ReactNode;
+}) {
+    // No href (first/last page): a disabled button, skipped by the keyboard.
+    if (href === null) {
+        return (
+            <Button variant="outline" size="sm" className={PAGE_BUTTON} disabled aria-label={label}>
+                {children}
+            </Button>
+        );
+    }
+
+    return (
+        <Button
+            asChild
+            variant={current ? 'default' : 'outline'}
+            size="sm"
+            className={`${PAGE_BUTTON} ${current ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}`}
+        >
+            <Link
+                href={href}
+                preserveState
+                aria-label={label}
+                aria-current={current ? 'page' : undefined}
+            >
+                {children}
+            </Link>
+        </Button>
     );
 }
 
